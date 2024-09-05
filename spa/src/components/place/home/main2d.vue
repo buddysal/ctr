@@ -48,7 +48,7 @@
               Last Access
             </td>
             <td class="text-left">
-              <!-- format Saturday, October 9 1999. -->
+              <!-- format Saturday, October 9 1999 -->
               {{ memberInfo.lastAccess | dateFormatFilter }}
             </td>
           </tr>
