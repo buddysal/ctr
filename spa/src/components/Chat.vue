@@ -19,17 +19,17 @@
             </strong>
             <span 
               v-else-if="msg.username === $store.data.user.username && msg.new === true"
-              class="text-yellow-200">
-              {{ msg.username }}<span
-                class="inline" v-show="msg.role"
-            >[{{ msg.role }}]</span
-            >: {{ msg.msg }}
+              class="text-yellow-200 font-bold">
+              <sup class="inline" v-show="msg.role">{{ msg.role }}</sup>
+              {{ msg.username }}
+              <sub class="inline">{{ msg.exp }}</sub> : 
+              <span class="font-normal">{{ msg.msg }}</span>
               </span>
-            <span v-else-if="msg.new === true">
-              {{ msg.username }}<span
-                class="inline" v-show="msg.role"
-            >[{{ msg.role }}]</span
-            >: {{ msg.msg }}
+            <span class="font-bold"  v-else-if="msg.new === true">
+              <sup class="inline" v-show="msg.role">{{ msg.role }}</sup>
+              {{ msg.username }}
+              <sub class="inline">{{ msg.exp }}</sub> : 
+              <span class="font-normal">{{ msg.msg }}</span>
             </span>
           </li>
         </ul>
@@ -367,6 +367,8 @@ export default Vue.extend({
       users: [],
       backpackObjects: [],
       primaryRole: "",
+      displayRole: true,
+      xpAmount: 0,
       activePanel: "users",
       objectId: null,
       canInteractWithObject: false,
@@ -442,6 +444,10 @@ export default Vue.extend({
         this.primaryRole = response.data.PrimaryRoleName[0].name;
       }
     },
+    async getXpAmount(){
+      const info = await this.$http.get('/member/info');
+      this.xpAmount = info.data.memberInfo.xp;
+    },
     debugMsg,
     sendMessage(): void {
       this.debugMsg("sending message...");
@@ -470,10 +476,18 @@ export default Vue.extend({
         }
 
       if (this.message !== "" && this.connected && this.numberOfPosts < maxPosts) {
-        this.$socket.emit("CHAT", {
-          msg: this.message,
-          role: this.primaryRole,
-        });
+        if(this.displayRole){
+          this.$socket.emit("CHAT", {
+            msg: this.message,
+            role: this.primaryRole,
+            exp: this.xpAmount,
+          });
+        } else {
+          this.$socket.emit("CHAT", {
+            msg: this.message,
+            exp: this.xpAmount,
+          });
+        }
         this.$http
           .post("/message/place/" + this.$store.data.place.id, {
             body: this.message,
@@ -750,19 +764,22 @@ export default Vue.extend({
       return check3d.data.user3d[0].is_3d
     },
     async updateObjectLists(object){
-      if(this.activePanel === 'userBackpack' && 
-          (object.member_username === this.username ||
-            object.buyer_username === this.username
-          )
-        ){
-          await this.loadUserBackpack();
-        }
+      if(['backpack', 'userBackpack'].includes(this.activePanel)){
+        this.backpackObjects = this.backpackObjects.filter(obj => {
+          return obj.id !== parseInt(object.obj_id);
+        });
+        const updatedObject = await this.$http.get(`/object_instance/${ object.obj_id }/properties/`);
         if(this.activePanel === 'backpack' && 
-          (object.member_username === this.$store.data.user.username ||
-          object.buyer_username === this.$store.data.user.username)
-        ){
-         await this.loadBackpack();
+          object.place_id === 0 && 
+          [object.member_username, object.buyer_username].includes(this.$store.data.user.username)){
+            this.backpackObjects.push(updatedObject.data.objectInstance[0]);
+          }
+        if(this.activePanel === 'userBackpack' && 
+          object.place_id === 0 && 
+          [object.member_username, object.buyer_username].includes(this.username)){
+              this.backpackObjects.push(updatedObject.data.objectInstance[0]);
         }
+      }
     },
     startSocketListeners(): void {
       this.$socket.on("CHAT", data => {
@@ -788,7 +805,9 @@ export default Vue.extend({
         this.setTimers(false);
       });
       this.$socket.on("update-object", (object) => {
-        this.updateObjectLists(object);
+        if([object.member_username, object.buyer_username].includes(this.$store.data.user.username) || [object.member_username, object.buyer_username].includes(this.username)){
+          this.updateObjectLists(object);
+        }
       });
     },
     dropObject() {
@@ -881,6 +900,7 @@ export default Vue.extend({
       this.startNewChat();
       this.canAdmin();
       this.getRole();
+      this.getXpAmount();
       this.joinedChat();
       this.setTimers(true);
     }
